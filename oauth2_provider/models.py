@@ -71,6 +71,8 @@ class AbstractApplication(models.Model):
     client_secret = models.CharField(max_length=255, blank=True,
                                      default=generate_client_secret, db_index=True)
     name = models.CharField(max_length=255, blank=True)
+    help_text = _("Scopes for this application, space separated")
+    scopes = models.TextField(help_text=help_text, blank=True)
     skip_authorization = models.BooleanField(default=False)
 
     class Meta:
