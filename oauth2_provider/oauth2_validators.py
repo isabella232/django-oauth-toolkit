@@ -276,10 +276,13 @@ class OAuth2Validator(RequestValidator):
         """
         Ensure required scopes are permitted (as specified in the settings file)
         """
-        return set(scopes).issubset(set(oauth2_settings._SCOPES))
+        extra_scopes = [p.name for p in request.user.user_permissions.all()]
+        total_scopes = extra_scopes + oauth2_settings._SCOPES
+        return set(scopes).issubset(set(total_scopes))
 
     def get_default_scopes(self, client_id, request, *args, **kwargs):
-        return oauth2_settings._DEFAULT_SCOPES
+        extra_scopes = [p.name for p in request.user.user_permissions.all()]
+        return extra_scopes + oauth2_settings._DEFAULT_SCOPES
 
     def validate_redirect_uri(self, client_id, redirect_uri, request, *args, **kwargs):
         return request.client.redirect_uri_allowed(redirect_uri)
