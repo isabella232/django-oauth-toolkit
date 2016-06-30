@@ -18,6 +18,7 @@ back to the defaults.
 from __future__ import unicode_literals
 
 import six
+import redis
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -108,6 +109,7 @@ class OAuth2ProviderSettings(object):
     """
 
     def __init__(self, user_settings=None, defaults=None, import_strings=None, mandatory=None):
+        self.redis_server = redis.Redis(settings.REDIS_HOST, settings.REDIS_PORT)
         self.user_settings = user_settings or {}
         self.defaults = defaults or {}
         self.import_strings = import_strings or ()

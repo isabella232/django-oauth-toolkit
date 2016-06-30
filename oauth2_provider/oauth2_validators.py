@@ -297,11 +297,33 @@ class OAuth2Validator(RequestValidator):
                   scope=' '.join(request.scopes))
         g.save()
 
+    def save_token_in_redis(self, a_token, r_token, old_a_token, old_r_token, expiry_time):
+        """
+        Combines access_token and refresh_token for the key
+        and sets it in redis
+        """
+        # todo put log lines
+        redis_key = "%s+%s" % (a_token, r_token)
+        value_mapping = {'auth_toke': a_token,
+                         'refresh_token': r_token,
+                         "expiry_time": expiry_time}
+        oauth2_settings.redis_server.sadd("auth_details", redis_key)
+        oauth2_settings.redis_server.expire(redis_key, oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
+        oauth2_settings.redis_server.hmset(redis_key, value_mapping)
+        if old_a_token:
+            # delete the old key from redis
+            old_redis_key = "%s+%s" % (old_a_token, old_r_token)
+            oauth2_settings.redis_server.srem("auth_details", old_redis_key)
+
+
+
     def save_bearer_token(self, token, request, *args, **kwargs):
         """
         Save access and refresh token, If refresh token is issued, remove old refresh tokens as
         in rfc:`6`
         """
+        old_a_token = token.get('access_token', "")
+        old_r_token = token.get('refresh_token', "")
         if request.refresh_token:
             # remove used refresh token
             try:
@@ -332,6 +354,11 @@ class OAuth2Validator(RequestValidator):
 
         # TODO check out a more reliable way to communicate expire time to oauthlib
         token['expires_in'] = oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
+        self.save_token_in_redis(a_token=access_token.token,
+                                 r_token=refresh_token.token,
+                                 old_a_token=old_a_token,
+                                 old_r_token=old_r_token,
+                                 expiry_time=expires)
 
     def revoke_token(self, token, token_type_hint, request, *args, **kwargs):
         """
