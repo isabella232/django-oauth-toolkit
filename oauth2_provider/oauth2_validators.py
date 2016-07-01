@@ -330,7 +330,6 @@ class OAuth2Validator(RequestValidator):
             log.warning("Unable to add access token:%s.\nOriginal Exception Occured:%s"
                       % (redis_token_key, e))
 
-
     def save_bearer_token(self, token, request, *args, **kwargs):
         """
         Save access and refresh token, If refresh token is issued, remove old refresh tokens as
