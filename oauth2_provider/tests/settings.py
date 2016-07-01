@@ -67,7 +67,11 @@ INSTALLED_APPS = (
 
     'oauth2_provider',
     'oauth2_provider.tests',
+    'redis',
 )
+
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
 
 LOGGING = {
     'version': 1,

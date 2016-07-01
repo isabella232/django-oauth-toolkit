@@ -13,7 +13,6 @@ from ..models import get_application_model, Grant, AccessToken
 from ..settings import oauth2_settings
 from ..views import ScopedProtectedResourceView, ReadWriteScopedResourceView
 
-
 Application = get_application_model()
 UserModel = get_user_model()
 
@@ -459,3 +458,121 @@ class TestReadWriteScope(BaseTest):
         view = ReadWriteResourceView.as_view()
         response = view(request)
         self.assertEqual(response.status_code, 403)
+
+
+class ScopeTest(TestCaseUtils, TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.test_user = UserModel.objects.create_user("test_user", "test@user.com", "123456")
+        self.test_noscope_user = UserModel.objects.create_user("test_no_scope_user", "testnoscope@user.com", "123456")
+        from django.contrib.auth.models import Permission
+        p = Permission()
+        p.name = "test_user_scope"
+        p.content_type_id = 7
+        p.save()
+
+        self.test_user.user_permissions.add(p)
+
+        self.application = Application(
+            name="Test Application",
+            user=self.test_user,
+            client_type=Application.CLIENT_CONFIDENTIAL,
+            client_id="test_client_id",
+            authorization_grant_type=Application.GRANT_PASSWORD,
+            client_secret="test_client_secret",
+            scopes="test_app_scope1 test_app_scope2"
+        )
+        self.application.save()
+
+        oauth2_settings._SCOPES = ['read', 'write']
+
+    def tearDown(self):
+        self.application.delete()
+        self.test_user.delete()
+        self.test_noscope_user.delete()
+
+
+class TestUserScope(ScopeTest):
+    def test_user_scopes_present(self):
+        token_request_data = {
+            'username': "test_user",
+            'password': "123456",
+            'grant_type': 'password'
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+        scopes = content['scope']
+
+        self.assertIsNotNone(access_token)
+        self.assertIsNotNone(scopes)
+        self.assertEqual("test_user_scope" in scopes, True, "Test user scope not found")
+
+    def test_user_scopes_not_present(self):
+        token_request_data = {
+            'username': "test_no_scope_user",
+            'password': "123456",
+            'grant_type': 'password'
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+        scopes = content['scope']
+
+        self.assertIsNotNone(access_token)
+        self.assertIsNotNone(scopes)
+        self.assertEqual("test_user_scope" in scopes, False, "Test user scope found")
+
+
+class TestAppScope(ScopeTest):
+    def test_app_scopes_present(self):
+        token_request_data = {
+            'username': "test_user",
+            'password': "123456",
+            'grant_type': 'password'
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        content = json.loads(response.content.decode("utf-8"))
+        print(content)
+        access_token = content['access_token']
+        scopes = content['scope']
+
+        self.assertIsNotNone(access_token)
+        self.assertIsNotNone(scopes)
+        self.assertEqual("test_app_scope1" in scopes, True, "Test scope #1 not found")
+        self.assertEqual("test_app_scope2" in scopes, True, "Test scope #2 not found")
+
+    def test_app_scopes_not_present(self):
+        token_request_data = {
+            'username': "test_user",
+            'password': "123456",
+            'grant_type': 'password'
+        }
+
+        self.application = Application(
+            name="Test Application no scope",
+            user=self.test_user,
+            client_type=Application.CLIENT_CONFIDENTIAL,
+            client_id="test_client_id_no_scope",
+            authorization_grant_type=Application.GRANT_PASSWORD,
+            client_secret="test_client_secret_no_scope",
+        )
+        self.application.save()
+
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        content = json.loads(response.content.decode("utf-8"))
+        print(content)
+        access_token = content['access_token']
+        scopes = content['scope']
+
+        self.assertIsNotNone(access_token)
+        self.assertEqual("test_app_scope1" in scopes, False, "Test scope #1 found")
+        self.assertEqual("test_app_scope2" in scopes, False, "Test scope #2 found")
+
