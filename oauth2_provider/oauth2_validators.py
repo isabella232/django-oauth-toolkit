@@ -297,24 +297,37 @@ class OAuth2Validator(RequestValidator):
                   scope=' '.join(request.scopes))
         g.save()
 
-    def save_token_in_redis(self, a_token, r_token, old_a_token, old_r_token, expiry_time):
+    def delete_token_from_redis(self, access_token, refresh_token):
+        """
+        deletes acess key from redis
+        """
+        if access_token:
+            redis_auth_key = "%s+%s" % (access_token, refresh_token)
+            try:
+                log.debug("deleting old access token:%s from redis" % redis_auth_key)
+                oauth2_settings.redis_server.delete(redis_key)
+                log.debug("old access token:%s deleted from redis" % redis_auth_key)
+            except Exception as e:
+                log.debug("Unable to remove old access token:%s.\nOriginal Exception Occured:%s"
+                          % (redis_auth_key, e))
+
+    def save_token_in_redis(self, access_token, refresh_token, scope, expiry_time):
         """
         Combines access_token and refresh_token for the key
         and sets it in redis
         """
         # todo put log lines
-        redis_key = "%s+%s" % (a_token, r_token)
-        value_mapping = {'auth_toke': a_token,
-                         'refresh_token': r_token,
-                         "expiry_time": expiry_time}
-        oauth2_settings.redis_server.sadd("auth_details", redis_key)
-        oauth2_settings.redis_server.expire(redis_key, oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
-        oauth2_settings.redis_server.hmset(redis_key, value_mapping)
-        if old_a_token:
-            # delete the old key from redis
-            old_redis_key = "%s+%s" % (old_a_token, old_r_token)
-            oauth2_settings.redis_server.srem("auth_details", old_redis_key)
-
+        redis_auth_key = "%s+%s" % (access_token, refresh_token)
+        value_mapping = {'access_toke': access_token,
+                         'refresh_token': refresh_token,
+                         'expiry_time': expiry_time,
+                         'scope': scope}
+        try:
+            oauth2_settings.redis_server.expire(redis_auth_key, oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
+            oauth2_settings.redis_server.hmset(redis_auth_key, value_mapping)
+        except Exception as e:
+            log.debug("Unable to add access token:%s.\nOriginal Exception Occured:%s"
+                      % (redis_auth_key, e))
 
 
     def save_bearer_token(self, token, request, *args, **kwargs):
@@ -322,12 +335,15 @@ class OAuth2Validator(RequestValidator):
         Save access and refresh token, If refresh token is issued, remove old refresh tokens as
         in rfc:`6`
         """
-        old_a_token = token.get('access_token', "")
-        old_r_token = token.get('refresh_token', "")
+        old_refresh_token = ""
+        old_access_token = ""
         if request.refresh_token:
             # remove used refresh token
             try:
-                RefreshToken.objects.get(token=request.refresh_token).revoke()
+                refresh_token = RefreshToken.objects.get(token=request.refresh_token)
+                old_refresh_token = refresh_token.token
+                old_access_token = refresh_token.access_token.token
+                refresh_token.revoke()
             except RefreshToken.DoesNotExist:
                 assert()  # TODO though being here would be very strange, at least log the error
 
@@ -354,11 +370,15 @@ class OAuth2Validator(RequestValidator):
 
         # TODO check out a more reliable way to communicate expire time to oauthlib
         token['expires_in'] = oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
-        self.save_token_in_redis(a_token=access_token.token,
-                                 r_token=refresh_token.token,
-                                 old_a_token=old_a_token,
-                                 old_r_token=old_r_token,
+
+        # saving newly created token to redis
+        self.save_token_in_redis(access_token=access_token.token,
+                                 refresh_token=refresh_token.token,
+                                 scope=token['scope'],
                                  expiry_time=expires)
+
+        # removing old token from redis
+        self.delete_token_from_redis(access_token=old_access_token, refresh_token=old_refresh_token)
 
     def revoke_token(self, token, token_type_hint, request, *args, **kwargs):
         """
@@ -368,6 +388,9 @@ class OAuth2Validator(RequestValidator):
         :param token_type_hint: access_token or refresh_token.
         :param request: The HTTP Request (oauthlib.common.Request)
         """
+        old_refresh_token = ""
+        old_access_token = ""
+
         if token_type_hint not in ['access_token', 'refresh_token']:
             token_type_hint = None
 
@@ -378,11 +401,34 @@ class OAuth2Validator(RequestValidator):
 
         token_type = token_types.get(token_type_hint, AccessToken)
         try:
-            token_type.objects.get(token=token).revoke()
+            if token_type == AccessToken:
+                access_token = token_type.objects.get(token=token)
+                # getting refresh token with access_token
+                refresh_token = RefreshToken.objects.filter(access_token=access_token).latest('id')
+
+                # putting access token and refresh token for deleting key form redis
+                old_refresh_token = refresh_token.token
+                old_access_token = access_token.token
+                access_token.revoke()
+            elif token_type == RefreshToken:
+                refresh_token = RefreshToken.objects.filter(token=token).latest('id')
+
+                # putting access token and refresh token for deleting key form redis
+                old_refresh_token = refresh_token.token
+                old_access_token = refresh_token.access_token.token
+                refresh_token.revoke()
         except ObjectDoesNotExist:
             for other_type in [_t for _t in token_types.values() if _t != token_type]:
                 # slightly inefficient on Python2, but the queryset contains only one instance
-                list(map(lambda t: t.revoke(), other_type.objects.filter(token=token)))
+                other_type_token = other_type.objects.filter(token=token)
+                if other_type == RefreshToken and other_type_token:
+                    refresh_token = other_type_token.latest('id')
+                    old_refresh_token = refresh_token.token
+                    old_access_token = refresh_token.access_token.token
+                list(map(lambda t: t.revoke(), other_type_token))
+
+        # revoking old token from redis
+        self.delete_token_from_redis(access_token=old_access_token, refresh_token=old_refresh_token)
 
     def validate_user(self, username, password, client, request, *args, **kwargs):
         """
