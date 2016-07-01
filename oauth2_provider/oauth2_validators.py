@@ -257,7 +257,7 @@ class OAuth2Validator(RequestValidator):
         """
         Validate both grant_type is a valid string and grant_type is allowed for current workflow
         """
-        assert(grant_type in GRANT_TYPE_MAPPING)  # mapping misconfiguration
+        assert (grant_type in GRANT_TYPE_MAPPING)  # mapping misconfiguration
         return request.client.authorization_grant_type in GRANT_TYPE_MAPPING[grant_type]
 
     def validate_response_type(self, client_id, response_type, client, request, *args, **kwargs):
@@ -274,17 +274,21 @@ class OAuth2Validator(RequestValidator):
 
     def validate_scopes(self, client_id, scopes, client, request, *args, **kwargs):
         """
-        Ensure required scopes are permitted (as specified in the settings file)
+        Ensure required scopes are permitted
         """
-        user_scopes = [p.name for p in request.user.user_permissions.all()]
+        user_scopes = []
+        if request.user:
+            user_scopes = [p.name for p in request.user.user_permissions.all()]
         app_scopes = [s for s in client.scopes.split()]
         all_scopes = app_scopes + user_scopes + oauth2_settings._SCOPES
         return set(scopes).issubset(set(all_scopes))
 
     def get_default_scopes(self, client_id, request, *args, **kwargs):
-        user_scopes = [p.name for p in request.user.user_permissions.all()]
+        user_scopes = []
+        if request.user:
+            user_scopes = [p.name for p in request.user.user_permissions.all()]
         app_scopes = [s for s in request.client.scopes.split()]
-        return app_scopes + user_scopes + oauth2_settings._SCOPES
+        return app_scopes + user_scopes + oauth2_settings._DEFAULT_SCOPES
 
     def validate_redirect_uri(self, client_id, redirect_uri, request, *args, **kwargs):
         return request.client.redirect_uri_allowed(redirect_uri)
@@ -342,7 +346,7 @@ class OAuth2Validator(RequestValidator):
                 old_access_token = refresh_token.access_token.token
                 refresh_token.revoke()
             except RefreshToken.DoesNotExist:
-                assert()  # TODO though being here would be very strange, at least log the error
+                assert ()  # TODO though being here would be very strange, at least log the error
 
         expires = timezone.now() + timedelta(seconds=oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
         if request.grant_type == 'client_credentials':
@@ -356,6 +360,7 @@ class OAuth2Validator(RequestValidator):
             application=request.client)
         access_token.save()
 
+        refresh_token = None
         if 'refresh_token' in token:
             refresh_token = RefreshToken(
                 user=request.user,
@@ -370,7 +375,7 @@ class OAuth2Validator(RequestValidator):
 
         # saving newly created token to redis
         self.save_token_in_redis(redis_token_key=access_token.token,
-                                 refresh_token=refresh_token.token,
+                                 refresh_token=None if refresh_token is None else refresh_token.token,
                                  scope=token['scope'],
                                  expiry_time=expires)
 
