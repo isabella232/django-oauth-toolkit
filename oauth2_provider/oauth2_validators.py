@@ -301,9 +301,10 @@ class OAuth2Validator(RequestValidator):
                   scope=' '.join(request.scopes))
         g.save()
 
-    def delete_token_from_redis(self, redis_token_key):
+    @staticmethod
+    def delete_token_from_redis(redis_token_key):
         """
-        deletes acess key from redis
+        deletes access key from redis
         """
         if redis_token_key:
             try:
@@ -311,13 +312,13 @@ class OAuth2Validator(RequestValidator):
                 oauth2_settings.redis_server.delete(redis_token_key)
                 log.debug("old access token:%s deleted from redis" % redis_token_key)
             except Exception as e:
-                log.warning("Unable to remove old access token:%s.\nOriginal Exception Occured:%s"
+                log.warning("Unable to remove old access token:%s.\nOriginal Exception Occurred: %s"
                             % (redis_token_key, e))
 
-    def save_token_in_redis(self, redis_token_key, refresh_token, scope, expiry_time):
+    @staticmethod
+    def save_token_in_redis(redis_token_key, refresh_token, scope, expiry_time):
         """
-        Combines access_token and refresh_token for the key
-        and sets it in redis
+        Uses access_token for the key and sets it in redis
         """
         value_mapping = {'access_token': redis_token_key,
                          'refresh_token': refresh_token,
@@ -326,24 +327,24 @@ class OAuth2Validator(RequestValidator):
         try:
             oauth2_settings.redis_server.expire(redis_token_key, oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
             oauth2_settings.redis_server.hmset(redis_token_key, value_mapping)
+            log.debug("saving access token:%s to redis" % redis_token_key)
         except Exception as e:
-            log.warning("Unable to add access token:%s.\nOriginal Exception Occured:%s"
-                      % (redis_token_key, e))
+            log.warning("Unable to add access token:%s.\nOriginal Exception Occurred: %s"
+                        % (redis_token_key, e))
 
     def save_bearer_token(self, token, request, *args, **kwargs):
         """
         Save access and refresh token, If refresh token is issued, remove old refresh tokens as
         in rfc:`6`
         """
-        old_refresh_token = ""
-        old_access_token = ""
         if request.refresh_token:
             # remove used refresh token
             try:
                 refresh_token = RefreshToken.objects.get(token=request.refresh_token)
-                old_refresh_token = refresh_token.token
                 old_access_token = refresh_token.access_token.token
                 refresh_token.revoke()
+                # removing old token from redis
+                self.delete_token_from_redis(redis_token_key=old_access_token)
             except RefreshToken.DoesNotExist:
                 assert ()  # TODO though being here would be very strange, at least log the error
 
@@ -378,9 +379,6 @@ class OAuth2Validator(RequestValidator):
                                  scope=token['scope'],
                                  expiry_time=expires)
 
-        # removing old token from redis
-        self.delete_token_from_redis(redis_token_key=old_access_token)
-
     def revoke_token(self, token, token_type_hint, request, *args, **kwargs):
         """
         Revoke an access or refresh token.
@@ -389,7 +387,6 @@ class OAuth2Validator(RequestValidator):
         :param token_type_hint: access_token or refresh_token.
         :param request: The HTTP Request (oauthlib.common.Request)
         """
-        old_refresh_token = ""
         old_access_token = ""
 
         if token_type_hint not in ['access_token', 'refresh_token']:
@@ -403,14 +400,12 @@ class OAuth2Validator(RequestValidator):
         token_type = token_types.get(token_type_hint, AccessToken)
         try:
             token_obj = token_type.objects.get(token=token)
-            old_refresh_token = token_obj.refresh_token.token if token_type == AccessToken else token_obj.token
             old_access_token = token_obj.token if token_type == AccessToken else token_obj.access_token.token
             token_obj.revoke()
         except ObjectDoesNotExist:
             for other_type in [_t for _t in token_types.values() if _t != token_type]:
                 try:
                     token_obj = other_type.objects.get(token=token)
-                    old_refresh_token = token_obj.refresh_token.token if other_type == AccessToken else token_obj.token
                     old_access_token = token_obj.token if other_type == AccessToken else token_obj.access_token.token
                     token_obj.revoke()
                 except ObjectDoesNotExist:
