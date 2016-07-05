@@ -316,14 +316,15 @@ class OAuth2Validator(RequestValidator):
                             % (redis_token_key, e))
 
     @staticmethod
-    def save_token_in_redis(redis_token_key, refresh_token, scope, expiry_time):
+    def save_token_in_redis(redis_token_key, refresh_token, scope, user, expiry_time):
         """
         Uses access_token for the key and sets it in redis
         """
         value_mapping = {'access_token': redis_token_key,
                          'refresh_token': refresh_token,
                          'expiry_time': expiry_time,
-                         'scope': scope}
+                         'scope': scope,
+                         'user_id': user.id if user else None}
         try:
             oauth2_settings.redis_server.expire(redis_token_key, oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
             oauth2_settings.redis_server.hmset(redis_token_key, value_mapping)
@@ -377,6 +378,7 @@ class OAuth2Validator(RequestValidator):
         self.save_token_in_redis(redis_token_key=access_token.token,
                                  refresh_token=None if refresh_token is None else refresh_token.token,
                                  scope=token['scope'],
+                                 user=request.user,
                                  expiry_time=expires)
 
     def revoke_token(self, token, token_type_hint, request, *args, **kwargs):
