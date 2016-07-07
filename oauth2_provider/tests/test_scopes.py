@@ -575,4 +575,3 @@ class TestAppScope(ScopeTest):
         self.assertIsNotNone(access_token)
         self.assertEqual("test_app_scope1" in scopes, False, "Test scope #1 found")
         self.assertEqual("test_app_scope2" in scopes, False, "Test scope #2 found")
-
