@@ -1,0 +1,9 @@
+dependencies:
+  pre:
+    - pyenv global 3.5.1
+    - pip install -r requirements/testing.txt
+test:
+  override:
+    - tox
+  post:
+    - cp django-oauth-toolkit/coverage.xml $CIRCLE_TEST_REPORTS
