@@ -10,11 +10,13 @@ from django.test import TestCase, RequestFactory
 from .test_utils import TestCaseUtils
 from ..compat import urlparse, parse_qs, urlencode
 from ..models import get_application_model, Grant, AccessToken
+from ..oauth2_validators import OAuth2Validator
 from ..settings import oauth2_settings
 from ..views import ScopedProtectedResourceView, ReadWriteScopedResourceView
 
 Application = get_application_model()
 UserModel = get_user_model()
+
 
 
 # mocking a protected resource view
@@ -174,8 +176,12 @@ class TestScopesSave(BaseTest):
         content = json.loads(response.content.decode("utf-8"))
         access_token = content['access_token']
 
-        at = AccessToken.objects.get(token=access_token)
-        self.assertEqual(at.scope, "scope1 scope2")
+        if oauth2_settings.ks_persist_db:
+            at = AccessToken.objects.get(token=access_token)
+            self.assertEqual(at.scope, "scope1 scope2")
+        else:
+            at = OAuth2Validator.get_token_from_redis(redis_token_key=access_token)
+            self.assertEqual(at['scope'], "scope1 scope2")
 
 
 class TestScopesProtection(BaseTest):
