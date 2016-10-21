@@ -85,7 +85,7 @@ INSTALLED_APPS = (
 
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
-KS_SSO_PERSIST_DB = True
+KS_SSO_PERSIST_DB = False
 
 LOGGING = {
     'version': 1,
