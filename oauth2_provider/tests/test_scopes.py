@@ -18,7 +18,6 @@ Application = get_application_model()
 UserModel = get_user_model()
 
 
-
 # mocking a protected resource view
 class ScopeResourceView(ScopedProtectedResourceView):
     required_scopes = ['scope1']
