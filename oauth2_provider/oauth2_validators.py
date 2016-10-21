@@ -456,7 +456,9 @@ class OAuth2Validator(RequestValidator):
         # Avoid second query for RefreshToken since this method is invoked *after*
         # validate_refresh_token.
         rt = request.refresh_token_instance
-        return rt.access_token.scope
+        if oauth2_settings.ks_persist_db:
+            return rt.access_token.scope
+        return rt['access_token']['scope']
 
     def validate_refresh_token(self, refresh_token, client, request, *args, **kwargs):
         """
@@ -464,12 +466,21 @@ class OAuth2Validator(RequestValidator):
         Also attach User instance to the request object
         """
         try:
-            rt = RefreshToken.objects.get(token=refresh_token)
-            request.user = rt.user
-            request.refresh_token = rt.token
-            # Temporary store RefreshToken instance to be reused by get_original_scopes.
-            request.refresh_token_instance = rt
-            return rt.application == client
+            if oauth2_settings.ks_persist_db:
+                rt = RefreshToken.objects.get(token=refresh_token)
+                request.user = rt.user
+                request.refresh_token = rt.token
+                # Temporary store RefreshToken instance to be reused by get_original_scopes.
+                request.refresh_token_instance = rt
+                return rt.application == client
+            else:
+                rt = self.get_token_from_redis(redis_token_key=refresh_token)
+                if rt:
+                    request.refresh_token = rt['refresh_token']
+                    rt['access_token'] = self.get_token_from_redis(redis_token_key=rt['access_token'])
+                    request.refresh_token_instance = rt
+                    return rt['application'] == client.name
+                return False
 
         except RefreshToken.DoesNotExist:
             return False
