@@ -271,6 +271,7 @@ class TestImplicitTokenView(BaseTest):
         request = self.factory.get("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = ResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = ResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a protected resource")
