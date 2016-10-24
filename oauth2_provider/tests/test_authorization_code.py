@@ -537,8 +537,9 @@ class TestAuthorizationCodeTokenView(BaseTest):
             'refresh_token': content['refresh_token'],
             'scope': content['scope'],
         }
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
+        if oauth2_settings.ks_persist_db:
+            response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+            self.assertEqual(response.status_code, 200)
 
         content = json.loads(response.content.decode("utf-8"))
         self.assertTrue('access_token' in content)
@@ -574,8 +575,9 @@ class TestAuthorizationCodeTokenView(BaseTest):
             'refresh_token': rt,
             'scope': content['scope'],
         }
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
+        if oauth2_settings.ks_persist_db:
+            response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+            self.assertEqual(response.status_code, 200)
 
         self.assertFalse(RefreshToken.objects.filter(token=rt).exists())
         self.assertFalse(AccessToken.objects.filter(token=at).exists())
@@ -602,8 +604,9 @@ class TestAuthorizationCodeTokenView(BaseTest):
             'grant_type': 'refresh_token',
             'refresh_token': content['refresh_token'],
         }
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
+        if oauth2_settings.ks_persist_db:
+            response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+            self.assertEqual(response.status_code, 200)
 
         content = json.loads(response.content.decode("utf-8"))
         self.assertTrue('access_token' in content)
@@ -657,8 +660,9 @@ class TestAuthorizationCodeTokenView(BaseTest):
             'refresh_token': content['refresh_token'],
             'scope': content['scope'],
         }
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
+        if oauth2_settings.ks_persist_db:
+            response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+            self.assertEqual(response.status_code, 200)
         response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
         self.assertEqual(response.status_code, 401)
 
@@ -686,12 +690,13 @@ class TestAuthorizationCodeTokenView(BaseTest):
             'scope': content['scope'],
         }
 
-        with mock.patch('oauthlib.oauth2.rfc6749.request_validator.RequestValidator.rotate_refresh_token',
-                        return_value=False):
-            response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-            self.assertEqual(response.status_code, 200)
-            response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-            self.assertEqual(response.status_code, 200)
+        if oauth2_settings.ks_persist_db:
+            with mock.patch('oauthlib.oauth2.rfc6749.request_validator.RequestValidator.rotate_refresh_token',
+                            return_value=False):
+                response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+                self.assertEqual(response.status_code, 200)
+                response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+                self.assertEqual(response.status_code, 200)
 
     def test_basic_auth_bad_authcode(self):
         """

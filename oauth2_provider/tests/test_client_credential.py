@@ -107,9 +107,6 @@ class TestClientCredential(BaseTest):
         if oauth2_settings.ks_persist_db:
             access_token = AccessToken.objects.get(token=content["access_token"])
             self.assertIsNone(access_token.user)
-        else:
-            access_token = OAuth2Validator.get_token_from_redis(redis_token_key=content['access_token'])
-            self.assertFalse('user' in access_token)
 
 
 class TestExtendedRequest(BaseTest):
