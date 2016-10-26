@@ -5,5 +5,3 @@ dependencies:
 test:
   override:
     - tox
-  post:
-    - cp django-oauth-toolkit/coverage.xml $CIRCLE_TEST_REPORTS

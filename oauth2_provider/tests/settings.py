@@ -1,5 +1,8 @@
+import os
+
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ADMINS = ()
 
@@ -40,11 +43,6 @@ STATICFILES_FINDERS = (
 # Make this unique, and don't share it with anybody.
 SECRET_KEY = "1234567890evonove"
 
-TEMPLATE_LOADERS = (
-    'django.template.loaders.filesystem.Loader',
-    'django.template.loaders.app_directories.Loader',
-)
-
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -55,7 +53,22 @@ MIDDLEWARE_CLASSES = (
 
 ROOT_URLCONF = 'oauth2_provider.tests.urls'
 
-TEMPLATE_DIRS = ()
+TEMPLATES = [{
+    'BACKEND': 'django.template.backends.django.DjangoTemplates',
+    'DIRS': [os.path.join(BASE_DIR, 'templates')],
+    'OPTIONS': {
+        'loaders': [
+            ('django.template.loaders.app_directories.Loader'),
+        ],
+        'context_processors': [
+            'django.template.context_processors.debug',
+            'django.template.context_processors.request',
+            'django.contrib.auth.context_processors.auth',
+            'django.contrib.messages.context_processors.messages',
+        ],
+    },
+}]
+
 
 INSTALLED_APPS = (
     'django.contrib.auth',
@@ -72,6 +85,7 @@ INSTALLED_APPS = (
 
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
+KS_SSO_PERSIST_DB = False
 
 LOGGING = {
     'version': 1,

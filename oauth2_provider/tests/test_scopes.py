@@ -174,8 +174,9 @@ class TestScopesSave(BaseTest):
         content = json.loads(response.content.decode("utf-8"))
         access_token = content['access_token']
 
-        at = AccessToken.objects.get(token=access_token)
-        self.assertEqual(at.scope, "scope1 scope2")
+        if oauth2_settings.ks_persist_db:
+            at = AccessToken.objects.get(token=access_token)
+            self.assertEqual(at.scope, "scope1 scope2")
 
 
 class TestScopesProtection(BaseTest):
@@ -217,9 +218,10 @@ class TestScopesProtection(BaseTest):
         request = self.factory.get("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = ScopeResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = ScopeResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a protected resource")
 
     def test_scopes_protection_fail(self):
         """
@@ -343,9 +345,10 @@ class TestScopesProtection(BaseTest):
         request = self.factory.get("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = MultiScopeResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = MultiScopeResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a protected resource")
 
 
 class TestReadWriteScope(BaseTest):
@@ -413,9 +416,10 @@ class TestReadWriteScope(BaseTest):
         request = self.factory.get("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = ReadWriteResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a read protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = ReadWriteResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a read protected resource")
 
     def test_no_read_scope(self):
         access_token = self.get_access_token('scope1')
@@ -441,9 +445,10 @@ class TestReadWriteScope(BaseTest):
         request = self.factory.post("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = ReadWriteResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a write protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = ReadWriteResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a write protected resource")
 
     def test_no_write_scope(self):
         access_token = self.get_access_token('scope1')

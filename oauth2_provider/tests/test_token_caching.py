@@ -57,7 +57,7 @@ class TestTokenCaching(CacheTest):
             self.assertIsNotNone(access_token)
 
             mock_redis.expire.assert_called_once()
-            mock_redis.hmset.assert_called_once_with(access_token, mock.ANY)
+            mock_redis.hmset.assert_called_with(access_token, mock.ANY)
             self.assertEqual(str(self.test_user.id) in str(mock_redis.hmset.call_args_list), True,
                              "User ID from Redis doesn't match")
             self.assertEqual(refresh_token in str(mock_redis.hmset.call_args_list), True,

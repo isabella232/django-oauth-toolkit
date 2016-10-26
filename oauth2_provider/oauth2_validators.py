@@ -316,15 +316,10 @@ class OAuth2Validator(RequestValidator):
                             % (redis_token_key, e))
 
     @staticmethod
-    def save_token_in_redis(redis_token_key, refresh_token, scope, user, expiry_time):
+    def save_token_in_redis(redis_token_key, value_mapping):
         """
         Uses access_token for the key and sets it in redis
         """
-        value_mapping = {'access_token': redis_token_key,
-                         'refresh_token': refresh_token,
-                         'expiry_time': expiry_time,
-                         'scope': scope,
-                         'user_id': user.id if user else None}
         try:
             oauth2_settings.redis_server.expire(redis_token_key, oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS)
             oauth2_settings.redis_server.hmset(redis_token_key, value_mapping)
@@ -332,6 +327,23 @@ class OAuth2Validator(RequestValidator):
         except Exception as e:
             log.warning("Unable to add access token:%s.\nOriginal Exception Occurred: %s"
                         % (redis_token_key, e))
+
+    @staticmethod
+    def get_token_from_redis(redis_token_key):
+        """
+        Get the token and values from redis
+        :param redis_token_key:
+        :return:
+        """
+        if redis_token_key:
+            try:
+                log.debug("Get all the values for the key %s from redis" % redis_token_key)
+                value_mapping = oauth2_settings.redis_server.hgetall(redis_token_key)
+                return value_mapping
+            except Exception as e:
+                log.warning("Unable to get value for the key: %s.\nOriginal Exception Occurred: %s"
+                            % (redis_token_key, e))
+                return None
 
     def save_bearer_token(self, token, request, *args, **kwargs):
         """
@@ -341,11 +353,14 @@ class OAuth2Validator(RequestValidator):
         if request.refresh_token:
             # remove used refresh token
             try:
-                refresh_token = RefreshToken.objects.get(token=request.refresh_token)
-                old_access_token = refresh_token.access_token.token
-                refresh_token.revoke()
-                # removing old token from redis
-                self.delete_token_from_redis(redis_token_key=old_access_token)
+                if oauth2_settings.ks_persist_db:
+                    refresh_token = RefreshToken.objects.get(token=request.refresh_token)
+                    refresh_token.revoke()
+                # removing old access and refresh tokens from redis
+                refresh_token_redis = self.get_token_from_redis(request.refresh_token)
+                if refresh_token_redis:
+                    self.delete_token_from_redis(redis_token_key=refresh_token_redis['access_token'])
+                    self.delete_token_from_redis(redis_token_key=refresh_token_redis['refresh_token'])
             except RefreshToken.DoesNotExist:
                 assert ()  # TODO though being here would be very strange, at least log the error
 
@@ -353,33 +368,44 @@ class OAuth2Validator(RequestValidator):
         if request.grant_type == 'client_credentials':
             request.user = None
 
-        access_token = AccessToken(
-            user=request.user,
-            scope=token['scope'],
-            expires=expires,
-            token=token['access_token'],
-            application=request.client)
-        access_token.save()
-
-        refresh_token = None
-        if 'refresh_token' in token:
-            refresh_token = RefreshToken(
+        if oauth2_settings.ks_persist_db:
+            access_token = AccessToken(
                 user=request.user,
-                token=token['refresh_token'],
-                application=request.client,
-                access_token=access_token
-            )
-            refresh_token.save()
+                scope=token['scope'],
+                expires=expires,
+                token=token['access_token'],
+                application=request.client)
+            access_token.save()
+
+            if 'refresh_token' in token:
+                refresh_token = RefreshToken(
+                    user=request.user,
+                    token=token['refresh_token'],
+                    application=request.client,
+                    access_token=access_token
+                )
+                refresh_token.save()
 
         # TODO check out a more reliable way to communicate expire time to oauthlib
         token['expires_in'] = oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
 
-        # saving newly created token to redis
-        self.save_token_in_redis(redis_token_key=access_token.token,
-                                 refresh_token=None if refresh_token is None else refresh_token.token,
-                                 scope=token['scope'],
-                                 user=request.user,
-                                 expiry_time=expires)
+        # saving newly created access and refresh tokens to redis
+        # Save refresh token to redis
+        if 'refresh_token' in token:
+            self.save_token_in_redis(redis_token_key=token['refresh_token'],
+                                     value_mapping={
+                                         'refresh_token': token['refresh_token'],
+                                         'user': request.user.id if request.user else None,
+                                         'application': request.client,
+                                         'access_token': token['access_token']})
+        # Save access token to redis
+        self.save_token_in_redis(redis_token_key=token['access_token'],
+                                 value_mapping={
+                                     'access_token': token['access_token'],
+                                     'refresh_token': token['refresh_token'] if 'refresh_token' in token else None,
+                                     'expiry_time': expires,
+                                     'scope': token['scope'],
+                                     'user_id': request.user.id if request.user else None})
 
     def revoke_token(self, token, token_type_hint, request, *args, **kwargs):
         """
@@ -430,7 +456,9 @@ class OAuth2Validator(RequestValidator):
         # Avoid second query for RefreshToken since this method is invoked *after*
         # validate_refresh_token.
         rt = request.refresh_token_instance
-        return rt.access_token.scope
+        if oauth2_settings.ks_persist_db:
+            return rt.access_token.scope
+        return rt['access_token']['scope']
 
     def validate_refresh_token(self, refresh_token, client, request, *args, **kwargs):
         """
@@ -438,12 +466,21 @@ class OAuth2Validator(RequestValidator):
         Also attach User instance to the request object
         """
         try:
-            rt = RefreshToken.objects.get(token=refresh_token)
-            request.user = rt.user
-            request.refresh_token = rt.token
-            # Temporary store RefreshToken instance to be reused by get_original_scopes.
-            request.refresh_token_instance = rt
-            return rt.application == client
+            if oauth2_settings.ks_persist_db:
+                rt = RefreshToken.objects.get(token=refresh_token)
+                request.user = rt.user
+                request.refresh_token = rt.token
+                # Temporary store RefreshToken instance to be reused by get_original_scopes.
+                request.refresh_token_instance = rt
+                return rt.application == client
+            else:
+                rt = self.get_token_from_redis(redis_token_key=refresh_token)
+                if rt:
+                    request.refresh_token = rt['refresh_token']
+                    rt['access_token'] = self.get_token_from_redis(redis_token_key=rt['access_token'])
+                    request.refresh_token_instance = rt
+                    return rt['application'] == client.name
+                return False
 
         except RefreshToken.DoesNotExist:
             return False

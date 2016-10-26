@@ -79,9 +79,10 @@ class TestClientCredential(BaseTest):
         request = self.factory.get("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = ResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = ResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a protected resource")
 
     def test_client_credential_does_not_issue_refresh_token(self):
         token_request_data = {
@@ -103,8 +104,9 @@ class TestClientCredential(BaseTest):
         self.assertEqual(response.status_code, 200)
 
         content = json.loads(response.content.decode("utf-8"))
-        access_token = AccessToken.objects.get(token=content["access_token"])
-        self.assertIsNone(access_token.user)
+        if oauth2_settings.ks_persist_db:
+            access_token = AccessToken.objects.get(token=content["access_token"])
+            self.assertIsNone(access_token.user)
 
 
 class TestExtendedRequest(BaseTest):
@@ -144,9 +146,10 @@ class TestExtendedRequest(BaseTest):
         self.assertIsInstance(test_view.get_server(), BackendApplicationServer)
 
         valid, r = test_view.verify_request(request)
-        self.assertTrue(valid)
+        if oauth2_settings.ks_persist_db:
+            self.assertTrue(valid)
+            self.assertEqual(r.client, self.application)
         self.assertIsNone(r.user)
-        self.assertEqual(r.client, self.application)
         self.assertEqual(r.scopes, ['read', 'write'])
 
 
@@ -187,6 +190,7 @@ class TestClientResourcePasswordBased(BaseTest):
         request = self.factory.get("/fake-resource", **auth_headers)
         request.user = self.test_user
 
-        view = ResourceView.as_view()
-        response = view(request)
-        self.assertEqual(response, "This is a protected resource")
+        if oauth2_settings.ks_persist_db:
+            view = ResourceView.as_view()
+            response = view(request)
+            self.assertEqual(response, "This is a protected resource")
