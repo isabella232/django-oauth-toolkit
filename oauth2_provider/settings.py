@@ -111,6 +111,7 @@ class OAuth2ProviderSettings(object):
     def __init__(self, user_settings=None, defaults=None, import_strings=None, mandatory=None):
         self.redis_server = redis.Redis(settings.REDIS_HOST, settings.REDIS_PORT)
         self.ks_persist_db = settings.KS_SSO_PERSIST_DB
+        self.ks_user_active_required = settings.KS_USER_ACTIVE_REQUIRED
         self.user_settings = user_settings or {}
         self.defaults = defaults or {}
         self.import_strings = import_strings or ()

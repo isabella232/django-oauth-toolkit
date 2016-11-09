@@ -447,10 +447,15 @@ class OAuth2Validator(RequestValidator):
         Check username and password correspond to a valid and active User
         """
         u = authenticate(username=username, password=password)
-        if u is not None and u.is_active:
-            request.user = u
-            return True
-        return False
+        if u is None:
+            return False
+        if oauth2_settings.ks_user_active_required:
+            if u.is_active:
+                request.user = u
+                return True
+            return False
+        request.user = u
+        return True
 
     def get_original_scopes(self, refresh_token, request, *args, **kwargs):
         # Avoid second query for RefreshToken since this method is invoked *after*
